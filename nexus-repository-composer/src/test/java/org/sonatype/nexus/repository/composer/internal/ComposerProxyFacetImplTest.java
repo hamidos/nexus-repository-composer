@@ -43,6 +43,8 @@ public class ComposerProxyFacetImplTest
 
   private static final String ZIPBALL_PATH = "vendor/project/version/project-version.zip";
 
+  private static final String TARBALL_PATH = "vendor/project/version/project-version.tar";
+
   @Mock
   private Repository repository;
 
@@ -139,6 +141,25 @@ public class ComposerProxyFacetImplTest
         .put("project", "project")
         .put("version", "version")
         .put("name", "project-version")
+        .put("type", "zip")
+        .build());
+
+    assertThat(underTest.getCachedContent(context), is(content));
+  }
+
+  @Test
+  public void getCachedContentTarball() throws Exception {
+    when(contextAttributes.require(AssetKind.class)).thenReturn(ZIPBALL);
+    when(contextAttributes.require(TokenMatcher.State.class)).thenReturn(state);
+
+    when(composerContentFacet.get(TARBALL_PATH)).thenReturn(content);
+
+    when(state.getTokens()).thenReturn(new ImmutableMap.Builder<String, String>()
+        .put("vendor", "vendor")
+        .put("project", "project")
+        .put("version", "version")
+        .put("name", "project-version")
+        .put("type", "tar")
         .build());
 
     assertThat(underTest.getCachedContent(context), is(content));
@@ -187,11 +208,31 @@ public class ComposerProxyFacetImplTest
         .put("project", "project")
         .put("version", "version")
         .put("name", "project-version")
+        .put("type", "zip")
         .build());
 
     underTest.indicateVerified(context, content, cacheInfo);
 
     verify(composerContentFacet).setCacheInfo(ZIPBALL_PATH, content, cacheInfo);
+  }
+
+
+  @Test
+  public void indicateVerifiedTarball() throws Exception {
+    when(contextAttributes.require(TokenMatcher.State.class)).thenReturn(state);
+    when(contextAttributes.require(AssetKind.class)).thenReturn(TARBALL);
+
+    when(state.getTokens()).thenReturn(new ImmutableMap.Builder<String, String>()
+        .put("vendor", "vendor")
+        .put("project", "project")
+        .put("version", "version")
+        .put("name", "project-version")
+        .put("type", "tar")
+        .build());
+
+    underTest.indicateVerified(context, content, cacheInfo);
+
+    verify(composerContentFacet).setCacheInfo(TARBALL_PATH, content, cacheInfo);
   }
 
   @Test
@@ -246,6 +287,7 @@ public class ComposerProxyFacetImplTest
         .put("project", "project")
         .put("version", "version")
         .put("name", "project-version")
+        .put("type", "zip")
         .build());
 
     assertThat(underTest.store(context, content), is(content));
@@ -290,6 +332,7 @@ public class ComposerProxyFacetImplTest
         .put("project", "project")
         .put("version", "version")
         .put("name", "project-version")
+        .put("type", "zip")
         .build());
 
     assertThat(underTest.getUrl(context), is("distUrl"));
@@ -308,6 +351,7 @@ public class ComposerProxyFacetImplTest
         .put("project", "project")
         .put("version", "version")
         .put("name", "project-version")
+        .put("type", "zip")
         .build());
 
     underTest.getUrl(context);

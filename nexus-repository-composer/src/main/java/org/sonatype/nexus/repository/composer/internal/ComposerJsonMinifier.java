@@ -68,12 +68,15 @@ public class ComposerJsonMinifier {
         if (json.get(PACKAGES_KEY) instanceof Map) {
             Map<String, Object> packagesMap = (Map<String, Object>) json.get(PACKAGES_KEY);
             for (String packageName : packagesMap.keySet()) {
-                List<Object> packageVersions = (List<Object>) packagesMap.get(packageName);
+                Map<String, Object> packageVersions = (Map<String, Object>) packagesMap.get(packageName);
 
                 Map<String, Object> lastKnownVersionData = null;
                 List<Object> minifiedVersions = new ArrayList<>();
-
-                for (Object versionObject : packageVersions) {
+                
+                if (packageVersions != null && !packageVersions.isEmpty()) {
+                    for (String packageVersion : packageVersions.keySet()) {
+                    Map<String, Object> versionObject = (Map<String, Object>) packageVersions.get(packageVersion);
+                    
                     if (!(versionObject instanceof Map)) {
                         continue;
                     }
@@ -110,7 +113,7 @@ public class ComposerJsonMinifier {
 
                     minifiedVersions.add(minifiedVersion);
                 }
-
+                }   
                 packages.put(packageName, minifiedVersions);
             }
         }

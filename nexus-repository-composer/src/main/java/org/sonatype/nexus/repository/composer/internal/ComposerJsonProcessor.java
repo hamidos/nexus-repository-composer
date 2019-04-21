@@ -36,6 +36,7 @@ import org.sonatype.nexus.repository.view.ContentTypes;
 import org.sonatype.nexus.repository.view.Payload;
 import org.sonatype.nexus.repository.view.payloads.StringPayload;
 
+import com.google.common.base.Preconditions;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.hash.Hashing;
@@ -43,20 +44,23 @@ import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.slf4j.Logger;
+import org.sonatype.goodies.common.Loggers;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static java.util.Collections.singletonMap;
-import static org.sonatype.nexus.repository.composer.internal.ComposerPathUtils.buildZipballPath;
 import static org.sonatype.nexus.repository.composer.internal.ComposerRecipeSupport.*;
+import static org.sonatype.nexus.repository.composer.internal.ComposerPathUtils.buildPackagePath;
+import static org.sonatype.nexus.repository.composer.internal.ComposerPathUtils.buildArchivePath;
 
 /**
- * Class encapsulating JSON processing for Composer-format repositories, including operations for parsing JSON indexes
+ * Class encapsulating JSON processing for Composer-format repositories,
+ * including operations for parsing JSON indexes
  * and rewriting them to be compatible with a proxy repository.
  */
 @Named
 @Singleton
-public class ComposerJsonProcessor
-{
+public class ComposerJsonProcessor {
   private static final String PACKAGE_JSON_PATH = "/p/%package%.json";
 
   private static final String PACKAGE_V2_JSON_PATH = "/p2/%package%.json";
@@ -139,40 +143,48 @@ public class ComposerJsonProcessor
 
   private static final DateTimeFormatter timeFormatter = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ssZZ");
 
+  protected static final Logger log = Preconditions.checkNotNull(Loggers.getLogger(ComposerJsonProcessor.class));
+
   private ComposerJsonExtractor composerJsonExtractor;
   private ComposerJsonMinifier composerJsonMinifier;
 
   @Inject
-  public ComposerJsonProcessor(final ComposerJsonExtractor composerJsonExtractor, final ComposerJsonMinifier composerJsonMinifier) {
+  public ComposerJsonProcessor(final ComposerJsonExtractor composerJsonExtractor,
+      final ComposerJsonMinifier composerJsonMinifier) {
     this.composerJsonExtractor = checkNotNull(composerJsonExtractor);
     this.composerJsonMinifier = checkNotNull(composerJsonMinifier);
   }
 
   /**
-   * Generates a packages.json file (inclusive of all projects) based on the list.json provided as a payload. Expected
-   * usage is to "go remote" on the current repository to fetch a list.json copy, then pass it to this method to build
+   * Generates a packages.json file (inclusive of all projects) based on the
+   * list.json provided as a payload. Expected
+   * usage is to "go remote" on the current repository to fetch a list.json copy,
+   * then pass it to this method to build
    * the packages.json for the client to use.
    */
   public Content generatePackagesFromList(final Repository repository, final Payload payload) throws IOException {
-    // TODO: Parse using JSON tokens rather than loading all this into memory, it "should" work but I'd be careful.
+    // TODO: Parse using JSON tokens rather than loading all this into memory, it
+    // "should" work but I'd be careful.
     Map<String, Object> listJson = parseJson(payload);
     return buildPackagesJson(repository, new LinkedHashSet<>((Collection<String>) listJson.get(PACKAGE_NAMES_KEY)));
   }
 
   /**
-   * Generates a packages.json file (inclusive of all projects) based on the components provided. Expected usage is
-   * for a hosted repository to be queried for its components, which are then provided to this method to build the
+   * Generates a packages.json file (inclusive of all projects) based on the
+   * components provided. Expected usage is
+   * for a hosted repository to be queried for its components, which are then
+   * provided to this method to build the
    * packages.json for the client to use.
    */
   public Content generatePackagesFromComponents(final Repository repository, final Iterable<Component> components)
-      throws IOException
-  {
+      throws IOException {
     return buildPackagesJson(repository, StreamSupport.stream(components.spliterator(), false)
         .map(component -> component.group() + "/" + component.name()).collect(Collectors.toSet()));
   }
 
   /**
-   * Builds a packages.json file as a {@code Content} instance containing the actual JSON for the given providers.
+   * Builds a packages.json file as a {@code Content} instance containing the
+   * actual JSON for the given providers.
    */
   private Content buildPackagesJson(final Repository repository, final Set<String> names) throws IOException {
     Map<String, Object> packagesJson = new LinkedHashMap<>();
@@ -184,7 +196,8 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Rewrites the provider JSON so that source entries are removed and dist entries are pointed back to Nexus.
+   * Rewrites the provider JSON so that source entries are removed and dist
+   * entries are pointed back to Nexus.
    */
   public Payload rewriteProviderJson(final Repository repository, final Payload payload) throws IOException {
     Map<String, Object> json = parseJson(payload);
@@ -193,7 +206,8 @@ public class ComposerJsonProcessor
       for (String packageName : packagesMap.keySet()) {
         Map<String, Object> packageVersions = (Map<String, Object>) packagesMap.get(packageName);
         for (String packageVersion : packageVersions.keySet()) {
-          // TODO: Make this more robust, right now it makes a lot of assumptions and doesn't deal with bad things well
+          // TODO: Make this more robust, right now it makes a lot of assumptions and
+          // doesn't deal with bad things well
           Map<String, Object> versionInfo = (Map<String, Object>) packageVersions.get(packageVersion);
           versionInfo.remove(SOURCE_KEY); // TODO: For now don't allow sources, probably should make this configurable?
 
@@ -210,29 +224,40 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Rewrites the provider JSON so that source entries are removed and dist entries are pointed back to Nexus.
+   * Rewrites the provider JSON so that source entries are removed and dist
+   * entries are pointed back to Nexus.
    */
   public Payload rewritePackageJson(final Repository repository, final Payload payload) throws IOException {
     Map<String, Object> json = parseJson(payload);
-
+    log.error("HERE 1: " + payload.toString());
     this.composerJsonMinifier.expand(json);
 
     if (json.get(PACKAGES_KEY) instanceof Map) {
-      Map<String, Object> packagesMap = (Map<String, Object>) json.get(PACKAGES_KEY);
-      for (String packageName : packagesMap.keySet()) {
-        List<Map<String, Object>> packageVersions = (List<Map<String, Object>>) packagesMap.get(packageName);
-        for (Map<String, Object> versionInfo : packageVersions) {
-          // TODO: Make this more robust, right now it makes a lot of assumptions and doesn't deal with bad things well
-          versionInfo.remove(SOURCE_KEY); // TODO: For now don't allow sources, probably should make this configurable?
 
-          Map<String, Object> distInfo = (Map<String, Object>) versionInfo.get(DIST_KEY);
-          if (distInfo != null && ZIP_TYPE.equals(distInfo.get(TYPE_KEY))) {
-            versionInfo.put(DIST_KEY,
-                    buildDistInfo(repository, packageName, (String) versionInfo.get(VERSION_KEY), (String) distInfo.get(REFERENCE_KEY),
-                            (String) distInfo.get(SHASUM_KEY), ZIP_TYPE));
+      Map<String, Object> packagesMap = (Map<String, Object>) json.get(PACKAGES_KEY);
+      log.error("HERE 2: " + packagesMap.toString());
+
+      for (String packageName : packagesMap.keySet()) {
+        Map<String, Object> packageVersions = (Map<String, Object>) packagesMap.get(packageName);
+        if (packageVersions != null && !packageVersions.isEmpty()) {
+          for (String packageVersion : packageVersions.keySet()) {
+            Map<String, Object> versionInfo = (Map<String, Object>) packageVersions.get(packageVersion);
+            // TODO: Make this more robust, right now it makes a lot of assumptions and
+            // doesn't deal with bad things well
+            versionInfo.remove(SOURCE_KEY); // TODO: For now don't allow sources, probably should make this
+                                            // configurable?
+
+            Map<String, Object> distInfo = (Map<String, Object>) versionInfo.get(DIST_KEY);
+            if (distInfo != null && ZIP_TYPE.equals(distInfo.get(TYPE_KEY))) {
+              versionInfo.put(DIST_KEY,
+                  buildDistInfo(repository, packageName, (String) versionInfo.get(VERSION_KEY),
+                      (String) distInfo.get(REFERENCE_KEY),
+                      (String) distInfo.get(SHASUM_KEY), ZIP_TYPE));
+            }
           }
         }
       }
+    
     }
 
     this.composerJsonMinifier.minify(json);
@@ -241,19 +266,22 @@ public class ComposerJsonProcessor
   }
 
   private String getAttributeFromAsset(Asset asset, String name) {
-    return asset.formatAttributes() != null && asset.formatAttributes().contains(name) ?
-        asset.formatAttributes().require(name, String.class) : null;
+    return asset.formatAttributes() != null && asset.formatAttributes().contains(name)
+        ? asset.formatAttributes().require(name, String.class)
+        : null;
   }
 
   /**
-   * Builds a provider JSON file for a list of components. This minimal subset will contain the packages entries with
-   * the name, version, and dist information for each component. A timestamp derived from the component's last updated
-   * field and a uid derived from the component group/name/version and last updated time is also included in the JSON.
+   * Builds a provider JSON file for a list of components. This minimal subset
+   * will contain the packages entries with
+   * the name, version, and dist information for each component. A timestamp
+   * derived from the component's last updated
+   * field and a uid derived from the component group/name/version and last
+   * updated time is also included in the JSON.
    */
   public Content buildProviderJson(final Repository repository,
-                                   final StorageTx storageTx,
-                                   final Iterable<Component> components) throws IOException
-  {
+      final StorageTx storageTx,
+      final Iterable<Component> components) throws IOException {
     Map<String, Map<String, Object>> packages = new LinkedHashMap<>();
     for (Component component : components) {
       Asset asset = storageTx.firstAsset(component);
@@ -277,7 +305,8 @@ public class ComposerJsonProcessor
       String sourceType = getAttributeFromAsset(asset, SOURCE_TYPE_FIELD_NAME);
       String sourceUrl = getAttributeFromAsset(asset, SOURCE_URL_FIELD_NAME);
       String sourceReference = getAttributeFromAsset(asset, SOURCE_REFERENCE_FIELD_NAME);
-      if (StringUtils.isNotBlank(sourceType) && StringUtils.isNotBlank(sourceUrl) && StringUtils.isNotBlank(sourceReference)) {
+      if (StringUtils.isNotBlank(sourceType) && StringUtils.isNotBlank(sourceUrl)
+          && StringUtils.isNotBlank(sourceReference)) {
         sourceInfo = new LinkedHashMap<>();
         sourceInfo.put(TYPE_KEY, sourceType);
         sourceInfo.put(URL_KEY, sourceUrl);
@@ -285,7 +314,8 @@ public class ComposerJsonProcessor
       }
       Map<String, Object> packagesForName = packages.get(name);
       packagesForName
-          .put(version, buildPackageInfo(repository, name, version, sha1, sha1, ZIP_TYPE, time, composerJson, sourceInfo));
+          .put(version,
+              buildPackageInfo(repository, name, version, sha1, sha1, ZIP_TYPE, time, composerJson, sourceInfo));
     }
 
     return new Content(new StringPayload(mapper.writeValueAsString(singletonMap(PACKAGES_KEY, packages)),
@@ -293,14 +323,16 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Builds a provider JSON file for a list of components. This minimal subset will contain the packages entries with
-   * the name, version, and dist information for each component. A timestamp derived from the component's last updated
-   * field and a uid derived from the component group/name/version and last updated time is also included in the JSON.
+   * Builds a provider JSON file for a list of components. This minimal subset
+   * will contain the packages entries with
+   * the name, version, and dist information for each component. A timestamp
+   * derived from the component's last updated
+   * field and a uid derived from the component group/name/version and last
+   * updated time is also included in the JSON.
    */
   public Content buildPackageJson(final Repository repository,
-                                   final StorageTx storageTx,
-                                   final Iterable<Component> components) throws IOException
-  {
+      final StorageTx storageTx,
+      final Iterable<Component> components) throws IOException {
     Map<String, List<Object>> packages = new LinkedHashMap<>();
     for (Component component : components) {
       Asset asset = storageTx.firstAsset(component);
@@ -324,7 +356,8 @@ public class ComposerJsonProcessor
       String sourceType = getAttributeFromAsset(asset, SOURCE_TYPE_FIELD_NAME);
       String sourceUrl = getAttributeFromAsset(asset, SOURCE_URL_FIELD_NAME);
       String sourceReference = getAttributeFromAsset(asset, SOURCE_REFERENCE_FIELD_NAME);
-      if (StringUtils.isNotBlank(sourceType) && StringUtils.isNotBlank(sourceUrl) && StringUtils.isNotBlank(sourceReference)) {
+      if (StringUtils.isNotBlank(sourceType) && StringUtils.isNotBlank(sourceUrl)
+          && StringUtils.isNotBlank(sourceReference)) {
         sourceInfo = new LinkedHashMap<>();
         sourceInfo.put(TYPE_KEY, sourceType);
         sourceInfo.put(URL_KEY, sourceUrl);
@@ -332,7 +365,7 @@ public class ComposerJsonProcessor
       }
       List<Object> packagesForName = packages.get(name);
       packagesForName
-              .add(buildPackageInfo(repository, name, version, sha1, sha1, ZIP_TYPE, time, composerJson, sourceInfo));
+          .add(buildPackageInfo(repository, name, version, sha1, sha1, ZIP_TYPE, time, composerJson, sourceInfo));
     }
 
     Map<String, Object> json = new LinkedHashMap<>();
@@ -340,7 +373,7 @@ public class ComposerJsonProcessor
     this.composerJsonMinifier.minify(json);
 
     return new Content(new StringPayload(mapper.writeValueAsString(json),
-            ContentTypes.APPLICATION_JSON));
+        ContentTypes.APPLICATION_JSON));
   }
 
   /**
@@ -357,16 +390,18 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Merges incoming provider JSON files, producing a merged file containing only the minimal subset of fields that we
+   * Merges incoming provider JSON files, producing a merged file containing only
+   * the minimal subset of fields that we
    * need to download artifacts.
    */
   public Content mergeProviderJson(final Repository repository, final List<Payload> payloads, final DateTime now)
-      throws IOException
-  {
+      throws IOException {
     String currentTime = now.withZone(DateTimeZone.UTC).toString(timeFormatter);
 
-    // TODO: Make this more robust, right now it makes a lot of assumptions and doesn't deal with bad things well,
-    // can probably consolidate this with the handling for rewrites for proxy (or at least make it more rational).
+    // TODO: Make this more robust, right now it makes a lot of assumptions and
+    // doesn't deal with bad things well,
+    // can probably consolidate this with the handling for rewrites for proxy (or at
+    // least make it more rational).
     Map<String, Map<String, Object>> packages = new LinkedHashMap<>();
     for (Payload payload : payloads) {
       Map<String, Object> json = parseJson(payload);
@@ -408,16 +443,18 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Merges incoming provider JSON files, producing a merged file containing only the minimal subset of fields that we
+   * Merges incoming provider JSON files, producing a merged file containing only
+   * the minimal subset of fields that we
    * need to download artifacts.
    */
   public Content mergePackageJson(final Repository repository, final List<Payload> payloads, final DateTime now)
-          throws IOException
-  {
+      throws IOException {
     String currentTime = now.withZone(DateTimeZone.UTC).toString(timeFormatter);
 
-    // TODO: Make this more robust, right now it makes a lot of assumptions and doesn't deal with bad things well,
-    // can probably consolidate this with the handling for rewrites for proxy (or at least make it more rational).
+    // TODO: Make this more robust, right now it makes a lot of assumptions and
+    // doesn't deal with bad things well,
+    // can probably consolidate this with the handling for rewrites for proxy (or at
+    // least make it more rational).
     Map<String, Map<String, Object>> packages = new LinkedHashMap<>();
     for (Payload payload : payloads) {
       Map<String, Object> json = parseJson(payload);
@@ -427,9 +464,9 @@ public class ComposerJsonProcessor
         Map<String, Object> packagesMap = (Map<String, Object>) json.get(PACKAGES_KEY);
         for (String packageName : packagesMap.keySet()) {
 
-          List<Map<String, Object>> packageVersions = (List<Map<String, Object>>) packagesMap.get(packageName);
-          for (Map<String, Object> versionInfo : packageVersions) {
-            String packageVersion = (String) versionInfo.get(VERSION_KEY);
+          Map<String, Object> packageVersions = (Map<String, Object>) packagesMap.get(packageName);
+          for (String packageVersion : packageVersions.keySet()) {
+            Map<String, Object> versionInfo = (Map<String, Object>) packageVersions.get(packageVersion);
 
             Map<String, Object> distInfo = (Map<String, Object>) versionInfo.get(DIST_KEY);
             if (distInfo == null) {
@@ -448,8 +485,8 @@ public class ComposerJsonProcessor
 
             Map<String, Object> packagesForName = packages.get(packageName);
             packagesForName.putIfAbsent(packageVersion, buildPackageInfo(repository, packageName, packageVersion,
-                    (String) distInfo.get(REFERENCE_KEY), (String) distInfo.get(SHASUM_KEY),
-                    (String) distInfo.get(TYPE_KEY), time, versionInfo, sourceInfo));
+                (String) distInfo.get(REFERENCE_KEY), (String) distInfo.get(SHASUM_KEY),
+                (String) distInfo.get(TYPE_KEY), time, versionInfo, sourceInfo));
           }
         }
       }
@@ -465,19 +502,18 @@ public class ComposerJsonProcessor
     this.composerJsonMinifier.minify(json);
 
     return new Content(new StringPayload(mapper.writeValueAsString(json),
-            ContentTypes.APPLICATION_JSON));
+        ContentTypes.APPLICATION_JSON));
   }
 
   private Map<String, Object> buildPackageInfo(final Repository repository,
-                                               final String packageName,
-                                               final String packageVersion,
-                                               final String reference,
-                                               final String shasum,
-                                               final String type,
-                                               final String time,
-                                               final Map<String, Object> versionInfo,
-                                               final Map<String, Object> sourceInfo)
-  {
+      final String packageName,
+      final String packageVersion,
+      final String reference,
+      final String shasum,
+      final String type,
+      final String time,
+      final Map<String, Object> versionInfo,
+      final Map<String, Object> sourceInfo) {
     Map<String, Object> newPackageInfo = new LinkedHashMap<>();
     newPackageInfo.put(NAME_KEY, packageName);
     newPackageInfo.put(VERSION_KEY, packageVersion);
@@ -560,18 +596,18 @@ public class ComposerJsonProcessor
   }
 
   private Map<String, Object> buildDistInfo(final Repository repository,
-                                            final String packageName,
-                                            final String packageVersion,
-                                            final String reference,
-                                            final String shasum,
-                                            final String type)
-  {
+      final String packageName,
+      final String packageVersion,
+      final String reference,
+      final String shasum,
+      final String type) {
     String packageNameParts[] = packageName.split("/");
     String packageVendor = packageNameParts[0];
     String packageProject = packageNameParts[1];
     Map<String, Object> newDistInfo = new LinkedHashMap<>();
     newDistInfo
-        .put(URL_KEY, repository.getUrl() + "/" + buildZipballPath(packageVendor, packageProject, packageVersion));
+        .put(URL_KEY,
+            repository.getUrl() + "/" + buildArchivePath(packageVendor, packageProject, packageVersion, null, type));
     newDistInfo.put(TYPE_KEY, type);
     newDistInfo.put(REFERENCE_KEY, reference);
     newDistInfo.put(SHASUM_KEY, shasum);
@@ -579,11 +615,11 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Obtains the dist URL for a particular vendor/project and version within a provider JSON payload.
+   * Obtains the dist URL for a particular vendor/project and version within a
+   * provider JSON payload.
    */
   public String getDistUrl(final String vendor, final String project, final String version, final Payload payload)
-      throws IOException
-  {
+      throws IOException {
     String vendorAndProject = String.format(VENDOR_AND_PROJECT, vendor, project);
     Map<String, Object> json = parseJson(payload);
     Map<String, Object> packagesMap = (Map<String, Object>) json.get(PACKAGES_KEY);
@@ -594,11 +630,12 @@ public class ComposerJsonProcessor
   }
 
   /**
-   * Obtains the dist URL for a particular vendor/project and version within a provider JSON payload.
+   * Obtains the dist URL for a particular vendor/project and version within a
+   * provider JSON payload.
    */
-  public String getDistUrlFromPackage(final String vendor, final String project, final String version, final Payload payload)
-          throws IOException
-  {
+  public String getDistUrlFromPackage(final String vendor, final String project, final String version,
+      final Payload payload)
+      throws IOException {
     String vendorAndProject = String.format(VENDOR_AND_PROJECT, vendor, project);
     Map<String, Object> json = parseJson(payload);
     composerJsonMinifier.expand(json);
@@ -606,10 +643,10 @@ public class ComposerJsonProcessor
     List<Map<String, Object>> packageInfo = (List<Map<String, Object>>) packagesMap.get(vendorAndProject);
 
     Map<String, Object> versionInfo = packageInfo
-            .stream()
-            .filter((v) -> version.equals(v.get(VERSION_KEY)))
-            .findFirst()
-            .orElseThrow(() -> new IOException("version not found"));
+        .stream()
+        .filter((v) -> version.equals(v.get(VERSION_KEY)))
+        .findFirst()
+        .orElseThrow(() -> new IOException("version not found"));
 
     Map<String, Object> distInfo = (Map<String, Object>) versionInfo.get(DIST_KEY);
     return (String) distInfo.get(URL_KEY);
@@ -617,7 +654,8 @@ public class ComposerJsonProcessor
 
   private Map<String, Object> parseJson(final Payload payload) throws IOException {
     try (InputStream in = payload.openInputStream()) {
-      TypeReference<Map<String, Object>> typeReference = new TypeReference<Map<String, Object>>() { };
+      TypeReference<Map<String, Object>> typeReference = new TypeReference<Map<String, Object>>() {
+      };
       return mapper.readValue(in, typeReference);
     }
   }

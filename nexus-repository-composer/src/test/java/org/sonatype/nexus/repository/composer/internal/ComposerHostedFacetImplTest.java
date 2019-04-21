@@ -51,6 +51,8 @@ public class ComposerHostedFacetImplTest
 
   private static final String ZIPBALL_PATH = "vendor/project/version/vendor-project-version.zip";
 
+  private static final String TARBALL_PATH = "vendor/project/version/vendor-project-version.tar";
+
   private static final String PROVIDER_PATH = "p/vendor/project.json";
 
   @Mock
@@ -107,7 +109,13 @@ public class ComposerHostedFacetImplTest
   @Test
   public void testGetZipball() throws Exception {
     when(composerContentFacet.get(ZIPBALL_PATH)).thenReturn(content);
-    assertThat(underTest.getZipball(ZIPBALL_PATH), is(content));
+    assertThat(underTest.getArchive(ZIPBALL_PATH), is(content));
+  }
+
+  @Test
+  public void testGetTarball() throws Exception {
+    when(composerContentFacet.get(TARBALL_PATH)).thenReturn(content);
+    assertThat(underTest.getArchive(TARBALL_PATH), is(content));
   }
 
   @Test

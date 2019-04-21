@@ -54,7 +54,7 @@ public class ComposerHostedFacetImpl
                      final String sourceUrl, final String sourceReference, final Payload payload)
       throws IOException {
     content().put(
-        ComposerPathUtils.buildZipballPath(vendor, project, version),
+        ComposerPathUtils.buildArchivePath(vendor, project, version, null, "zip"),
         payload,
         sourceType,
         sourceUrl,
@@ -63,7 +63,7 @@ public class ComposerHostedFacetImpl
   }
 
   @Override
-  public Content getZipball(final String path) throws IOException {
+  public Content getArchive(final String path) throws IOException {
     return content().get(path);
   }
 

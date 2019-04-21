@@ -63,6 +63,8 @@ abstract class ComposerRecipeSupport
   public static final String SOURCE_URL_FIELD_NAME = 'src-url';
 
   public static final String SOURCE_REFERENCE_FIELD_NAME = 'src-ref';
+  
+  public static final String TYPE_TOKEN = 'type'
 
   @Inject
   Provider<ComposerContentFacet> contentFacet
@@ -150,11 +152,11 @@ abstract class ComposerRecipeSupport
             ))
   }
 
-  static Builder zipballMatcher() {
+  static Builder archiveMatcher() {
     new Builder().matcher(
         LogicMatchers.and(
             new ActionMatcher(GET, HEAD),
-            new TokenMatcher('/{vendor:.+}/{project:.+}/{version:.+}/{name:.+}.zip')
+            new TokenMatcher('/{vendor:.+}/{project:.+}/{version:.+}/{name:.+}.{type:.+}')
         ))
   }
 
