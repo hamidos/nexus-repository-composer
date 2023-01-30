@@ -11,6 +11,11 @@ target/
 .mvn/extensions.xml
 .mvn/maven.config
 
+# Java
+*.class
+**/bin/*
+**/target/*
+
 # Intellij
 *.ipr
 *.iml
