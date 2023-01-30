@@ -53,7 +53,7 @@ If everything checks out, the bundle for Composer should be available in the `ta
 
 #### Build with Docker
 
-    docker build -t nexus-repository-composer .
+    DOCKER_BUILDKIT=1 docker build -t nexus-repository-composer .
 
 #### Run as a Docker container
 

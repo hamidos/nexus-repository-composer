@@ -4,9 +4,9 @@ ARG NEXUS_VERSION=latest
 
 FROM maven:3-jdk-8-alpine AS build
 
+WORKDIR /nexus-repository-composer
 COPY . /nexus-repository-composer/
-RUN cd /nexus-repository-composer/; \
-    mvn clean package -PbuildKar;
+RUN --mount=type=cache,target=/root/.m2 mvn clean package -PbuildKar
 
 FROM sonatype/nexus3:$NEXUS_VERSION
 
